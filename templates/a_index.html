@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Audio Search | UNNANU.AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="branding">
+        <span class="company-name">UNNANU.AI</span>
+    </div>
+    <div class="container">
+        <h1>Upload & Search Audios</h1>
+
+        {% if message %}
+            <div class="info">{{ message }}</div>
+        {% endif %}
+
+        <form id="audioForm" method="post" enctype="multipart/form-data" autocomplete="off">
+            <input type="file" name="audiofile" accept="audio/*" multiple>
+            <button type="submit">Upload</button>
+        </form>
+
+        <hr>
+
+        <form action="{{ url_for('search') }}" method="post" style="margin-bottom:24px;">
+            <input type="text" id="searchBox" name="query" placeholder="Search by tag, transcript, emotion, entity..." value="{{ query }}" required>
+            <button type="submit">Search</button>
+        </form>
+
+        {% if query %}
+            <h3>Search Results ({{ results|length }})</h3>
+            {% if results %}
+                <div class="result-cards">
+                {% for item in results %}
+                    <div class="result-card">
+                        <h3>{{ item.file_name }}</h3>
+                        <p><strong>Matched:</strong> {{ item.matched }}</p>
+
+                        {% if item.timestamp is not none %}
+                            <p><strong>Matched Timestamp:</strong> {{ item.timestamp }} seconds</p>
+                            <button onclick="playFromTimestamp('player_{{ loop.index }}', {{ item.timestamp|tojson }})">
+                            ▶️ Play from here
+                            </button>
+                        {% endif %}
+
+                        <p><strong>▶️ Play Full Audio:</strong></p>
+                        <audio id="player_{{ loop.index }}" controls>
+                            <source src="{{ item.stream_url }}" type="audio/mpeg">
+                            Your browser does not support the audio element.
+                        </audio>
+
+                        <p><strong>Tags:</strong> {{ item.tags | join(', ') }}</p>
+                        <p><strong>Transcript:</strong> {{ item.transcript }}</p>
+                    </div>
+                {% endfor %}
+                </div>
+            {% else %}
+                <p style="color:#c00;font-weight:bold;">No results found for "{{ query }}".</p>
+            {% endif %}
+        {% else %}
+            <h3>Available Audios ({{ catalog|length }})</h3>
+            {% if catalog %}
+                <div class="result-cards">
+                {% for item in catalog %}
+                    <div class="result-card">
+                        <h3>{{ item.file_name }}</h3>
+
+                        <p><strong>▶️ Play Full Audio:</strong></p>
+                        <audio id="catalog_player_{{ loop.index }}" controls>
+                            <source src="{{ item.stream_url }}" type="audio/mpeg">
+                            Your browser does not support the audio element.
+                        </audio>
+
+                        <p><strong>Tags:</strong> {{ item.tags | join(', ') }}</p>
+                        <p><strong>Transcript:</strong> {{ item.transcript }}</p>
+                        <p><strong>Emotion:</strong> {{ item.emotion }}</p>
+                    </div>
+                {% endfor %}
+                </div>
+            {% else %}
+                <p>No audio files found in the catalog.</p>
+            {% endif %}
+        {% endif %}
+    </div>
+
+    <script>
+    function playFromTimestamp(playerId, timestamp) {
+        const audio = document.getElementById(playerId);
+        if (!audio) {
+            alert("Audio player not found!");
+            return;
+        }
+        audio.currentTime = timestamp;
+        audio.play().catch(err => {
+            console.error("Playback error:", err);
+            alert("Could not start playback. Check browser settings.");
+        });
+    }
+
+    // === Autocorrect on space + case sensitive ===
+    document.addEventListener("DOMContentLoaded", function() {
+        const searchBox = document.getElementById("searchBox");
+
+        searchBox.addEventListener("keyup", async function(event) {
+            if (event.key === " ") {
+                let text = searchBox.value.trimEnd();
+                let words = text.split(" ");
+                let lastWord = words[words.length - 1];
+
+                if (lastWord.length > 2) {
+                    try {
+                        let response = await fetch("/autocorrect", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ word: lastWord })
+                        });
+                        let data = await response.json();
+                        let corrected = data.corrected;
+
+                        if (corrected && corrected !== lastWord) {
+                            // Preserve case sensitivity
+                            if (lastWord === lastWord.toUpperCase()) {
+                                corrected = corrected.toUpperCase();
+                            } else if (lastWord[0] === lastWord[0].toUpperCase()) {
+                                corrected = corrected.charAt(0).toUpperCase() + corrected.slice(1);
+                            }
+
+                            words[words.length - 1] = corrected;
+                            searchBox.value = words.join(" ") + " ";
+                        }
+                    } catch (err) {
+                        console.error("Autocorrect error:", err);
+                    }
+                }
+            }
+        });
+    });
+    </script>
+</body>
+</html>
